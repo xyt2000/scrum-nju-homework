@@ -1,173 +1,221 @@
 <template>
-  <div>
-    <div class="comment">
-      <h2>
-        <span>评论</span>
-        <span class="part__tit_desc">共 {{commentList.length}} 条评论</span>
-      </h2>
-      <div class="comment-msg">
-        <el-input
-          class="comment-input"
-          type="textarea"
-          placeholder="期待您的精彩评论..."
-          :rows="2"
-          v-model="textarea">
-        </el-input>
-      </div>
-      <el-button type="primary" class="sub-btn" @click="postComment()">发表评论</el-button>
-    </div>
-    <ul class="popular" v-for="(item, index) in commentList" :key="index">
-      <li>
-        <div class="popular-img">
-          <img :src="attachImageUrl(userPicList[index])" alt="">
-        </div>
-        <div class="popular-msg">
-          <ul>
-            <li class="name">{{userNameList[index]}}</li>
-            <li class="content">{{item.content}}</li>
-            <li class="time">{{item.createTime}}</li>
-          </ul>
-        </div>
-        <div class="up" ref="up" @click="postUp(item.id, item.up, index)">
-          <svg class="icon" aria-hidden="true">
-            <use :xlink:href="ZAN"></use>
-          </svg>
-          {{item.up}}
-        </div>
-      </li>
-    </ul>
+  <div class="comment">
+    <h2 class="comment-title">
+      <span>评论</span>
+      <span class="comment-desc">共 {{ commentList.length }} 条评论</span>
+    </h2>
+    <el-input class="comment-input" type="textarea" placeholder="期待您的精彩评论..." :rows="2" v-model="textarea" />
+    <el-button class="sub-btn" type="primary" @click="submitComment()">发表评论</el-button>
   </div>
+  <ul class="popular">
+    <li v-for="(item, index) in commentList" :key="index">
+      <el-image class="popular-img" fit="contain" :src="attachImageUrl(userPicList[index])" />
+      <div class="popular-msg">
+        <ul>
+          <li class="name">{{ userNameList[index] }}</li>
+          <li class="time">{{ getBirth(item.createTime) }}</li>
+          <li class="content">{{ item.content }}</li>
+        </ul>
+      </div>
+      <div class="up" ref="up" @click="setSupport(item.id, item.up, index)">
+        <yin-icon :icon="iconList.ZAN"></yin-icon>
+        {{ item.up }}
+      </div>
+    </li>
+  </ul>
 </template>
 
-<script>
-import { mapGetters } from 'vuex'
-import mixin from '../mixins'
-import { HttpManager } from '../api'
-import { ICON } from '../enums'
+<script lang="ts">
+import { defineComponent, getCurrentInstance, ref, toRefs, computed, watch, reactive, onMounted } from "vue";
+import { useStore } from "vuex";
+import YinIcon from "@/components/layouts/YinIcon.vue";
+import mixin from "@/mixins/mixin";
+import { HttpManager } from "@/api";
+import { Icon } from "@/enums";
+import { getBirth } from "@/utils";
 
-export default {
-  name: 'Comment',
-  mixins: [mixin],
+export default defineComponent({
+  components: {
+    YinIcon,
+  },
   props: {
-    playId: Number, // 歌曲ID或歌单ID
-    type: Number // 歌单（1）/歌曲（0）
+    playId: Number || String, // 歌曲ID或歌单ID
+    type: Number, // 歌单（1）/歌曲（0）
   },
-  data () {
-    return {
-      commentList: [], // 存放评论内容
-      userPicList: [], // 保存评论用户头像
-      userNameList: [], // 保存评论用户名字
-      textarea: '', // 存放输入内容
-      ZAN: ICON.ZAN
-    }
-  },
-  computed: {
-    ...mapGetters([
-      'songId',
-      'token' // 用户是否登录
-    ])
-  },
-  watch: {
-    songId () {
-      this.getComment()
-    }
-  },
-  mounted () {
-    this.getComment()
-  },
-  methods: {
+  setup(props) {
+    const { proxy } = getCurrentInstance();
+    const store = useStore();
+    const { checkStatus } = mixin();
+
+    const { playId, type } = toRefs(props);
+    const commentList = ref([]); // 存放评论内容
+    const userPicList = ref([]); // 保存评论用户头像
+    const userNameList = ref([]); // 保存评论用户名字
+    const textarea = ref(""); // 存放输入内容
+    const iconList = reactive({
+      ZAN: Icon.ZAN,
+    });
+    const userId = computed(() => store.getters.userId);
+    const songId = computed(() => store.getters.songId);
+    watch(songId, () => {
+      getComment();
+    });
+
     // 获取所有评论
-    getComment () {
-      HttpManager.getAllComment(this.type, this.playId)
-        .then(res => {
-          this.commentList = res
-          for (let item of res) {
-            this.getUsers(item.userId)
-          }
-        })
-        .catch(err => {
-          console.error(err)
-        })
-    },
-    // 获取评论用户的昵称和头像
-    getUsers (id) {
-      HttpManager.getUserOfId(id)
-        .then(res => {
-          this.userPicList.push(res[0].avator)
-          this.userNameList.push(res[0].username)
-        })
-        .catch(err => {
-          console.error(err)
-        })
-    },
-    // 提交评论
-    postComment () {
-      if (!this.token) {
-        this.$notify({
-          title: '请先登录',
-          type: 'warning'
-        })
-        return
+    async function getComment() {
+      try {
+        const result = (await HttpManager.getAllComment(type.value, playId.value)) as ResponseBody;
+        commentList.value = result.data;
+        for (const item of commentList.value) {
+          // 获取评论用户的昵称和头像
+          const resultUser = (await HttpManager.getUserOfId(item.userId)) as ResponseBody;
+          userPicList.value.push(resultUser.data[0].avator);
+          userNameList.value.push(resultUser.data[0].username);
+        }
+      } catch (error) {
+        console.error(error);
       }
+    }
+
+    // 提交评论
+    async function submitComment() {
+      if (!checkStatus()) return;
 
       // 0 代表歌曲， 1 代表歌单
-      let params = new URLSearchParams()
-      if (this.type === 1) {
-        params.append('songListId', this.playId)
-      } else if (this.type === 0) {
-        params.append('songId', this.playId)
+      const params = new URLSearchParams();
+      if (type.value === 1) {
+        params.append("songListId", `${playId.value}`);
+      } else if (type.value === 0) {
+        params.append("songId", `${playId.value}`);
       }
-      params.append('userId', this.userId)
-      params.append('type', this.type)
-      params.append('content', this.textarea)
-      HttpManager.setComment(params)
-        .then(res => {
-          if (res.code === 1) {
-            this.textarea = ''
-            this.getComment()
-            this.$notify({
-              title: '评论成功',
-              type: 'success'
-            })
-          } else {
-            this.$notify({
-              title: '评论失败',
-              type: 'error'
-            })
-          }
-        })
-        .catch(err => {
-          console.error(err)
-        })
-    },
-    // 点赞
-    postUp (id, up, index) {
-      if (!this.token) {
-        this.$notify({
-          title: '请先登录',
-          type: 'warning'
-        })
-        return
-      }
+      params.append("userId", userId.value);
+      params.append("type", `${type.value}`);
+      params.append("content", textarea.value);
 
-      let params = new URLSearchParams()
-      params.append('id', id)
-      params.append('up', up + 1)
-      HttpManager.setLike(params)
-        .then(res => {
-          if (res.code === 1) {
-            this.$refs.up[index].children[0].style.color = '#2796dd'
-            this.getComment()
-          }
-        })
-        .catch(err => {
-          console.error(err)
-        })
+      const result = (await HttpManager.setComment(params)) as ResponseBody;
+      (proxy as any).$message({
+        message: result.message,
+        type: result.type,
+      });
+
+      if (result.success) {
+        textarea.value = "";
+        await getComment();
+      }
     }
-  }
-}
+
+    // 点赞
+    async function setSupport(id, up, index) {
+      if (!checkStatus()) return;
+
+      const params = new URLSearchParams();
+      params.append("id", id);
+      params.append("up", up + 1);
+
+      const result = (await HttpManager.setSupport(params)) as ResponseBody;
+      if (result.success) {
+        proxy.$refs.up[index].children[0].style.color = "#2796dd";
+        await getComment();
+      }
+    }
+
+    onMounted(() => {
+      getComment();
+    });
+
+    return {
+      commentList,
+      userPicList,
+      userNameList,
+      textarea,
+      iconList,
+      attachImageUrl: HttpManager.attachImageUrl,
+      submitComment,
+      setSupport,
+      getBirth,
+    };
+  },
+});
 </script>
 
 <style lang="scss" scoped>
-@import '@/assets/css/comment.scss';
+@import "@/assets/css/var.scss";
+@import "@/assets/css/global.scss";
+
+/*评论*/
+.comment {
+  position: relative;
+  margin-bottom: 60px;
+
+  .comment-title {
+    height: 50px;
+    line-height: 50px;
+
+    .comment-desc {
+      font-size: 14px;
+      font-weight: 400;
+      color: $color-grey;
+      margin-left: 10px;
+    }
+  }
+
+  .comment-input {
+    display: flex;
+    margin-bottom: 20px;
+  }
+
+  .sub-btn {
+    position: absolute;
+    right: 0;
+  }
+}
+
+/*热门评论*/
+.popular {
+  width: 100%;
+  > li {
+    border-bottom: solid 1px rgba(0, 0, 0, 0.1);
+    padding: 15px 0;
+    display: flex;
+    .popular-img {
+      width: 50px;
+    }
+
+    .popular-msg {
+      padding: 0 20px;
+      flex: 1;
+      li {
+        width: 100%;
+      }
+      .time {
+        font-size: 0.6rem;
+        color: rgba(0, 0, 0, 0.5);
+      }
+      .name {
+        color: rgba(0, 0, 0, 0.5);
+      }
+      .content {
+        font-size: 1rem;
+      }
+    }
+
+    .up {
+      display: flex;
+      align-items: center;
+      width: 40px;
+      justify-content: space-around;
+      font-size: 1rem;
+      cursor: pointer;
+
+      &:hover,
+      :deep(.icon):hover {
+        color: $color-grey;
+      }
+    }
+  }
+}
+
+.icon {
+  @include icon(1em);
+}
 </style>

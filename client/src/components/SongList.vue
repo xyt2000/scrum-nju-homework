@@ -1,71 +1,73 @@
 <template>
   <div class="content">
-    <h1 class="title">
-      <slot name="title"></slot>
-    </h1>
-    <hr>
-    <ul>
-      <li class="list-title">
-        <div class="song-item">
-          <span class="item-index"></span>
-          <span class="item-title">歌曲名</span>
-          <span class="item-name">艺人</span>
-          <span class="item-intro">专辑</span>
-        </div>
-      </li>
-      <li class="list-content" v-for="(item, index) in songList" :key="index">
-        <div
-          class="song-item"
-          :class="{'is-play': songId === item.id}"
-          @click="playMusic({
-            id: item.id,
-            url: item.url,
-            pic: item.pic,
-            index: index,
-            name: item.name,
-            lyric: item.lyric,
-            currentSongList: songList
-          })"
-        >
-          <span class="item-index">
-            <span v-if="songId !== item.id">{{index + 1}}</span>
-            <svg v-if="songId === item.id" class="icon" aria-hidden="true">
-              <use :xlink:href="YINLIANG"></use>
-            </svg>
-          </span>
-          <span class="item-title">{{getSongTitle(item.name)}}</span>
-          <span class="item-name">{{getSingerName(item.name)}}</span>
-          <span class="item-intro">{{item.introduction}}</span>
-        </div>
-      </li>
-    </ul>
+    <el-table style="width: 100%" stripe highlight-current-row :data="dataList" @row-click="handleClick">
+      <el-table-column type="index" width="50" />
+      <el-table-column prop="songName" label="歌曲名" />
+      <el-table-column prop="singerName" label="歌手" />
+      <el-table-column prop="introduction" label="专辑" />
+    </el-table>
   </div>
 </template>
 
-<script>
-import { mapGetters } from 'vuex'
-import mixin from '../mixins'
-import { ICON } from '../enums'
+<script lang="ts">
+import { defineComponent, toRefs, computed } from "vue";
+import mixin from "@/mixins/mixin";
 
-export default {
-  name: 'SongList',
-  mixins: [mixin],
+export default defineComponent({
   props: {
-    songList: Array
+    songList: Array,
   },
-  data () {
-    return {
-      YINLIANG: ICON.YINLIANG
+  setup(props) {
+    const { getSongTitle, getSingerName, playMusic } = mixin();
+
+    const { songList } = toRefs(props);
+    const dataList = computed(() => {
+      const list = [];
+      songList.value.forEach((item: any, index) => {
+        item["songName"] = getSongTitle(item.name);
+        item["singerName"] = getSingerName(item.name);
+        item["index"] = index;
+        list.push(item);
+      });
+      return list;
+    });
+
+    function handleClick(row) {
+      playMusic({
+        id: row.id,
+        url: row.url,
+        pic: row.pic,
+        index: row.index,
+        name: row.name,
+        lyric: row.lyric,
+        currentSongList: songList.value,
+      });
     }
+
+    return {
+      dataList,
+      handleClick,
+    };
   },
-  computed: {
-    ...mapGetters([
-      'songId' // 音乐 ID
-    ])
-  }
-}
+});
 </script>
 
 <style lang="scss" scoped>
-@import '@/assets/css/song-list.scss';
+@import "@/assets/css/var.scss";
+@import "@/assets/css/global.scss";
+
+.content {
+  background-color: $color-white;
+  border-radius: $border-radius-songlist;
+  padding: 3%;
+}
+
+.content:deep(.el-table__row.current-row) {
+  color: $color-blue-active;
+  font-weight: bold;
+}
+
+.content:deep(.el-table__row) {
+  cursor: pointer;
+}
 </style>

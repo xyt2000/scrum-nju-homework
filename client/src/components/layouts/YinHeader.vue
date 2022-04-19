@@ -2,114 +2,229 @@
   <div class="yin-header">
     <!--图标-->
     <div class="header-logo" @click="goPage()">
-      <svg class="icon" aria-hidden="true">
-        <use :xlink:href="ERJI"></use>
-      </svg>
-      <span>{{musicName}}</span>
+      <yin-icon :icon="iconList.ERJI"></yin-icon>
+      <span>{{ musicName }}</span>
     </div>
     <ul class="navbar">
-      <li :class="{active: item.name === activeNavName}" v-for="item in headerNavList" :key="item.path" @click="goPage(item.path, item.name)">
-        {{item.name}}
+      <li :class="{ active: item.name === activeNavName }" v-for="item in headerNavList" :key="item.path" @click="goPage(item.path, item.name)">
+        {{ item.name }}
       </li>
-      <li>
-        <div class="header-search">
-          <input type="text" placeholder="搜索音乐" @keyup.enter="goSearch()" v-model="keywords">
-          <div class="search-btn"  @click="goSearch()" >
-            <svg class="icon" aria-hidden="true">
-              <use :xlink:href="SOUSUO"></use>
-            </svg>
-          </div>
-        </div>
+      <!--搜索框-->
+      <li class="header-search">
+        <el-input placeholder="搜索" :prefix-icon="Search" v-model="keywords" @keyup.enter="goSearch()" />
       </li>
-      <li v-show="!token" :class="{active: item.name === activeNavName}" v-for="item in signList" :key="item.type" @click="goPage(item.path, item.name)">{{item.name}}</li>
     </ul>
     <!--设置-->
-    <div class="header-right" v-show="token">
-      <div id="user" ref="user">
-        <img :src="attachImageUrl(userPic)" alt="">
-      </div>
-      <ul class="menu" ref="menu" :class="showMenu ? 'show' : ''">
-        <li v-for="(item, index) in menuList" :key="index" @click="goMenuList(item.path)">{{item.name}}</li>
-      </ul>
-    </div>
+    <ul class="header-right sign" v-if="!token">
+      <li :class="{ active: item.name === activeNavName }" v-for="item in signList" :key="item.type" @click="goPage(item.path, item.name)">
+        {{ item.name }}
+      </li>
+    </ul>
+    <el-dropdown class="header-right" v-if="token" trigger="click">
+      <el-image class="user" fit="contain" :src="attachImageUrl(userPic)"/>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item v-for="(item, index) in menuList" :key="index" @click.stop="goMenuList(item.path)">{{ item.name }}</el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
   </div>
 </template>
 
-<script>
-import { mapGetters } from 'vuex'
-import mixin from '../../mixins'
-import { HEADERNAVLIST, SIGNLIST, MENULIST, ICON, MUSICNAME, HOME, SEARCH, SIGN_OUT, MY_MUSIC, NAV_NAME } from '../../enums'
+<script lang="ts">
+import { defineComponent, ref, getCurrentInstance, computed, reactive } from "vue";
+import { Search } from "@element-plus/icons-vue";
+import { useStore } from "vuex";
+import YinIcon from "./YinIcon.vue";
+import mixin from "@/mixins/mixin";
+import { HEADERNAVLIST, SIGNLIST, MENULIST, Icon, MUSICNAME, RouterName, NavName } from "@/enums";
+import { HttpManager } from "@/api";
 
-export default {
-  name: 'YinHeader',
-  mixins: [mixin],
-  data () {
+export default defineComponent({
+  components: {
+    YinIcon,
+  },
+  setup() {
+    const { proxy } = getCurrentInstance();
+    const store = useStore();
+    const { changeIndex, routerManager } = mixin();
+
+    const musicName = ref(MUSICNAME);
+    const headerNavList = ref(HEADERNAVLIST); // 左侧导航栏
+    const signList = ref(SIGNLIST); // 右侧导航栏
+    const menuList = ref(MENULIST); // 用户下拉菜单项
+    const iconList = reactive({
+      ERJI: Icon.ERJI,
+    });
+    const keywords = ref("");
+    const activeNavName = computed(() => store.getters.activeNavName);
+    const userPic = computed(() => store.getters.userPic);
+    const token = computed(() => store.getters.token);
+
+    function goPage(path, name) {
+      if (!path && !name) {
+        changeIndex(NavName.Home);
+        routerManager(RouterName.Home, { path: RouterName.Home });
+      } else {
+        changeIndex(name);
+        routerManager(path, { path });
+      }
+    }
+
+    function goMenuList(path) {
+      if (path === 0) proxy.$store.commit("setIsCollection", false);
+
+      if (path == RouterName.SignOut) {
+        proxy.$store.commit("setToken", false);
+        changeIndex(NavName.Home);
+        routerManager(RouterName.Home, { path: RouterName.Home });
+      } else {
+        routerManager(path, { path });
+      }
+    }
+    function goSearch() {
+      if (keywords.value !== "") {
+        proxy.$store.commit("setSearchWord", keywords.value);
+        routerManager(RouterName.Search, { path: RouterName.Search, query: { keywords: keywords.value } });
+      } else {
+        (proxy as any).$message({
+          message: "搜索内容不能为空",
+          type: "error",
+        });
+      }
+    }
+
     return {
-      musicName: MUSICNAME,
-      headerNavList: HEADERNAVLIST, // 左侧导航栏
-      signList: SIGNLIST, // 右侧导航栏
-      menuList: MENULIST, // 用户下拉菜单项
-      keywords: '',
-      showMenu: false,
-      ERJI: ICON.ERJI,
-      SOUSUO: ICON.SOUSUO
-    }
+      musicName,
+      headerNavList,
+      signList,
+      menuList,
+      iconList,
+      keywords,
+      activeNavName,
+      userPic,
+      token,
+      Search,
+      goPage,
+      goMenuList,
+      goSearch,
+      attachImageUrl: HttpManager.attachImageUrl,
+    };
   },
-  computed: {
-    ...mapGetters([
-      'activeNavName',
-      'userPic',
-      'token'
-    ])
-  },
-  mounted () {
-    this.$refs.user.addEventListener('click', e => {
-      this.showMenu = true
-      e.stopPropagation()// 关键在于阻止冒泡
-    }, false)
-    // 点击“菜单”内部时，阻止事件冒泡。(这样点击内部时，菜单不会关闭)
-    this.$refs.menu.addEventListener('click', e => {
-      e.stopPropagation()
-    }, false)
-    document.addEventListener('click', () => {
-      this.showMenu = false
-    }, false)
-  },
-  methods: {
-    goPage (path, name) {
-      if (!this.token && path === MY_MUSIC) {
-        this.$notify({
-          title: '请先登录',
-          type: 'warning'
-        })
-      } else if (!path && !name) {
-        this.changeIndex(NAV_NAME.HOME)
-        this.routerManager(HOME, { path: HOME })
-      } else {
-        this.changeIndex(name)
-        this.routerManager(path, { path })
-      }
-    },
-    goMenuList (path) {
-      this.showMenu = false
-
-      if (path === 0) this.$store.commit('setIsCollection', false)
-
-      if (path) {
-        this.routerManager(path, { path })
-      } else {
-        this.$store.commit('setToken', false)
-        this.routerManager(SIGN_OUT, { path: SIGN_OUT })
-      }
-    },
-    goSearch () {
-      this.$store.commit('setSearchWord', this.keywords)
-      this.routerManager(SEARCH, { path: SEARCH, query: {keywords: this.keywords} })
-    }
-  }
-}
+});
 </script>
 
 <style lang="scss" scoped>
-@import '@/assets/css/yin-header.scss';
+@import "@/assets/css/var.scss";
+@import "@/assets/css/global.scss";
+@media screen and (min-width: $sm) {
+  .header-logo {
+    margin: 0 1rem;
+    // .icon {
+    // @include icon(($header-height / 3) * 2, $color-black);
+    // }
+  }
+}
+
+@media screen and (max-width: $sm) {
+  .header-logo {
+    margin: 0 1rem;
+    span {
+      display: none;
+    }
+  }
+  .header-search {
+    display: none;
+  }
+}
+/*头部*/
+.yin-header {
+  position: fixed;
+  // @include layout;
+  width: 100%;
+  height: $header-height;
+  line-height: $header-height;
+  padding: $header-padding;
+  margin: $header-margin;
+  background-color: $theme-header-color;
+  box-shadow: $box-shadow;
+  box-sizing: border-box;
+  z-index: 100;
+  display: flex;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+}
+
+/*左侧LOGO*/
+.header-logo {
+  font-size: $font-size-logo;
+  font-weight: bold;
+  cursor: pointer;
+  .icon {
+    @include icon(1.9rem, $color-black);
+    vertical-align: middle;
+  }
+  span {
+    margin-left: 1rem;
+  }
+}
+
+/*navbar*/
+.navbar {
+  display: flex;
+  white-space: nowrap;
+  flex: 1;
+  /*搜索输入框*/
+  .header-search {
+    width: 100%;
+    &::v-deep input {
+      text-indent: 5px;
+      max-width: $header-search-width;
+      border-radius: $header-search-radius;
+      box-shadow: none;
+      background-color: $color-light-grey;
+      color: $color-black;
+    }
+  }
+}
+
+.navbar,
+.header-right.sign {
+  li {
+    margin: $header-nav-margin;
+    padding: $header-nav-padding;
+    font-size: $font-size-header;
+    color: $color-grey;
+    cursor: pointer;
+  }
+}
+/*用户*/
+.header-right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-content: flex-start;
+
+  .user {
+    width: $header-user-width;
+    height: $header-user-width;
+    border-radius: $header-user-radius;
+    margin-right: $header-user-margin;
+    cursor: pointer;
+  }
+  .setting {
+    font-size: 30px;
+    cursor: pointer;
+  }
+}
+
+.show {
+  display: block;
+}
+
+.active {
+  color: $theme-color !important;
+  border-bottom: 5px solid $theme-color !important;
+}
 </style>
